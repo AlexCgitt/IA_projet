@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import joblib
+import requests
+from datetime import datetime
 
 def afficher_arbres_a_risque(data_json):
     # Charger le scaler et le modèle préalablement enregistrés
@@ -25,6 +27,14 @@ def afficher_arbres_a_risque(data_json):
     # Encodage des variables catégorielles
     X = pd.concat([DataFrame[colonnes_numeriques], pd.get_dummies(DataFrame[colonnes_categorieles]), DataFrame['remarquable']], axis=1)
 
+
+    # Aligner les colonnes de X avec celles utilisées pour le scaler et le modèle
+    scaler_features = scaler.get_feature_names_out()
+    missing_cols = set(scaler_features) - set(X.columns)
+    for col in missing_cols:
+        X[col] = 0
+    X = X[scaler_features]
+
     # Standardisation des données
     X_scaled = scaler.transform(X)
 
@@ -34,8 +44,41 @@ def afficher_arbres_a_risque(data_json):
     # Ajout des prédictions au DataFrame original
     DataFrame['arbre_a_risque'] = y_pred
 
-    # Filtrer les arbres à risque
-    risky_trees = DataFrame[DataFrame['arbre_a_risque'] == 1]
+
+    # Fonction météo
+    API_KEY = 'd1e8510be2ffab2edb288c8dee41c9a3'
+    BASE_URL = 'http://api.openweathermap.org/data/2.5/weather'
+    def meteo(latitude, longitude, api_key=API_KEY):
+        url = f"{BASE_URL}?lat={latitude}&lon={longitude}&appid={api_key}"
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            weather_info = {
+                'temperature': data['main']['temp'],
+                'humidity': data['main']['humidity'],
+                'weather_description': data['weather'][0]['description'],
+                'timestamp': datetime.utcfromtimestamp(data['dt']).strftime('%Y-%m-%d %H:%M:%S')
+            }
+            return weather_info
+        else:
+            return None
+
+    for i in range(10):
+        latitude = DataFrame.iloc[i]['latitude']
+        longitude = DataFrame.iloc[i]['longitude']
+        weather = meteo(latitude, longitude)
+        print(weather)
+
+    # Aligner les colonnes de X avec celles utilisées pour le scaler et le modèle
+    scaler_features = scaler.get_feature_names_out()
+    missing_cols = set(scaler_features) - set(X.columns)
+    for col in missing_cols:
+        X[col] = 0
+    X = X[scaler_features]
+
+
+    # Filtrer les arbres essouchés à risque
+    risky_trees = DataFrame[(DataFrame['fk_arb_etat'] == 1) & (DataFrame['arbre_a_risque'] == 1)]
 
     # Affichage des arbres à risque
     fig = px.scatter_mapbox(risky_trees, lat="latitude", lon="longitude", color="arbre_a_risque", zoom=12)
@@ -44,5 +87,5 @@ def afficher_arbres_a_risque(data_json):
     fig.show()
 
 # Exemple d'utilisation
-# Remplacer 'Data_Arbre2.JSON' par le chemin du fichier JSON de test
-afficher_arbres_a_risque('Data_Arbre2.JSON')
+# Remplacer 'data_test.json' par le chemin du fichier JSON de test
+afficher_arbres_a_risque('data_test.json')
